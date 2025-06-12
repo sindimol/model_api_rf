@@ -4,60 +4,44 @@ import joblib
 from PIL import Image
 import os
 
-# Load model, scaler, dan label encoder
-model = joblib.load('model_rf.pkl')
-scaler = joblib.load('scaler.pkl')
-label_encoder = joblib.load('label_encoder.pkl')
+# Load model regresi dan scaler
+model = joblib.load('model_regresi_rgb.pkl')
+scaler = joblib.load('scaler_regresi_rgb.pkl')
 
 app = Flask(__name__)
 
-# Mapping dari label lengkap ke versi singkat
-label_mapping = {
-    'hijau_segar': 'Segar',
-    'merah_segar': 'Segar',
-    'hijau_sedang': 'Sedang',
-    'merah_sedang': 'Sedang',
-    'hijau_kering': 'Kering',
-    'merah_kering': 'Kering'
-}
-
-# Fungsi ekstraksi RGB mean
+# Ekstraksi fitur RGB
 def extract_rgb_features(image):
     image = image.resize((100, 100))
     image_np = np.array(image)
-
     if image_np.ndim == 3 and image_np.shape[2] == 3:
         r_mean = np.mean(image_np[:, :, 0])
         g_mean = np.mean(image_np[:, :, 1])
         b_mean = np.mean(image_np[:, :, 2])
         return [r_mean, g_mean, b_mean]
     else:
-        raise ValueError("Gambar harus memiliki 3 channel RGB")
+        raise ValueError("Gambar harus RGB (3 channel)")
 
-@app.route('/predict_image', methods=['POST'])
-def predict_image():
+@app.route('/predict_kadar_air', methods=['POST'])
+def predict_kadar_air():
     try:
         image_file = request.files['image']
-        kadar_air_str = request.form.get('kadar_air')
-
-        if kadar_air_str is None:
-            return jsonify({'error': 'Parameter kadar_air tidak ditemukan'}), 400
-
-        kadar_air = float(kadar_air_str) / 100.0
-
         image = Image.open(image_file).convert('RGB')
         rgb_features = extract_rgb_features(image)
+        features_scaled = scaler.transform([rgb_features])
+        predicted_kadar_air = model.predict(features_scaled)[0]
 
-        features = np.array(rgb_features + [kadar_air]).reshape(1, -1)
-        features_scaled = scaler.transform(features)
-
-        prediction = model.predict(features_scaled)
-        original_label = label_encoder.inverse_transform(prediction)[0]
-        mapped_label = label_mapping.get(original_label, 'Tidak Diketahui')
+        # Klasifikasi kondisi
+        if predicted_kadar_air >= 80:
+            status = "Segar"
+        elif predicted_kadar_air >= 60:
+            status = "Sedang"
+        else:
+            status = "Kering"
 
         return jsonify({
-            'klasifikasi': mapped_label,
-            'label_model': original_label
+            'kadar_air': round(float(predicted_kadar_air), 2),
+            'status': status
         })
 
     except Exception as e:
