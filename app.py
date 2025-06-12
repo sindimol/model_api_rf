@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import numpy as np
 import joblib
 from PIL import Image
+import os  # ← Tambahkan ini
 
 # Load model dan scaler
 model = joblib.load('model_rf.pkl')  # model klasifikasi
