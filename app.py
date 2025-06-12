@@ -2,15 +2,16 @@ from flask import Flask, request, jsonify
 import numpy as np
 import joblib
 from PIL import Image
-import os  # ← Tambahkan ini
+import os
 
-# Load model dan scaler
-model = joblib.load('model_rf.pkl')  # model klasifikasi
-scaler = joblib.load('scaler.pkl')   # StandardScaler yang dipakai saat training
+# Load model, scaler, dan label encoder
+model = joblib.load('model_rf.pkl')
+scaler = joblib.load('scaler.pkl')
+label_encoder = joblib.load('label_encoder.pkl')
 
 app = Flask(__name__)
 
-# Mapping label hasil model ke status umum
+# Mapping dari label lengkap ke versi singkat
 label_mapping = {
     'hijau_segar': 'Segar',
     'merah_segar': 'Segar',
@@ -20,7 +21,7 @@ label_mapping = {
     'merah_kering': 'Kering'
 }
 
-# Fungsi ekstraksi fitur dari gambar
+# Fungsi ekstraksi RGB mean
 def extract_rgb_features(image):
     image = image.resize((100, 100))
     image_np = np.array(image)
@@ -37,23 +38,22 @@ def extract_rgb_features(image):
 def predict_image():
     try:
         image_file = request.files['image']
-        kadar_air_str = request.form.get('kadar_air', None)
+        kadar_air_str = request.form.get('kadar_air')
 
         if kadar_air_str is None:
             return jsonify({'error': 'Parameter kadar_air tidak ditemukan'}), 400
 
-        kadar_air = float(kadar_air_str) / 100.0  # ubah ke skala 0–1
+        kadar_air = float(kadar_air_str) / 100.0
+
         image = Image.open(image_file).convert('RGB')
         rgb_features = extract_rgb_features(image)
 
-        # Gabungkan RGB dan kadar air
         features = np.array(rgb_features + [kadar_air]).reshape(1, -1)
         features_scaled = scaler.transform(features)
 
-        # Prediksi kelas
         prediction = model.predict(features_scaled)
-        original_label = str(prediction[0])
-        mapped_label = label_mapping.get(original_label, "Tidak Diketahui")
+        original_label = label_encoder.inverse_transform(prediction)[0]
+        mapped_label = label_mapping.get(original_label, 'Tidak Diketahui')
 
         return jsonify({
             'klasifikasi': mapped_label,
