@@ -4,16 +4,25 @@ import joblib
 from PIL import Image
 import os
 
-# Load model regresi dan scaler
-model = joblib.load('model_regresi_rgb.pkl')
-scaler = joblib.load('scaler_regresi_rgb.pkl')
+# Load model dan scaler
+model = joblib.load('model_rf.pkl')         # Model klasifikasi
+scaler = joblib.load('scaler.pkl')          # StandardScaler saat training
+label_encoder = joblib.load('label_encoder.pkl')  # Encoder label, jika ada
 
 app = Flask(__name__)
 
-# Ekstraksi fitur RGB
+# Mapping status ke estimasi kadar air (rata-rata)
+kadar_air_mapping = {
+    'Segar': 80.0,
+    'Sedang': 65.0,
+    'Kering': 45.0
+}
+
+# Fungsi ekstraksi RGB mean
 def extract_rgb_features(image):
-    image = image.resize((100, 100))
+    image = image.resize((150, 150))  # Ukuran lebih besar agar lebih variatif
     image_np = np.array(image)
+
     if image_np.ndim == 3 and image_np.shape[2] == 3:
         r_mean = np.mean(image_np[:, :, 0])
         g_mean = np.mean(image_np[:, :, 1])
@@ -27,21 +36,34 @@ def predict_kadar_air():
     try:
         image_file = request.files['image']
         image = Image.open(image_file).convert('RGB')
-        rgb_features = extract_rgb_features(image)
-        features_scaled = scaler.transform([rgb_features])
-        predicted_kadar_air = model.predict(features_scaled)[0]
 
-        # Klasifikasi kondisi
-        if predicted_kadar_air >= 80:
-            status = "Segar"
-        elif predicted_kadar_air >= 60:
-            status = "Sedang"
+        # Ekstrak fitur RGB
+        rgb_features = extract_rgb_features(image)
+        features = np.array(rgb_features).reshape(1, -1)
+        features_scaled = scaler.transform(features)
+
+        # Prediksi label
+        prediction = model.predict(features_scaled)[0]
+        if hasattr(label_encoder, "inverse_transform"):
+            original_label = label_encoder.inverse_transform([prediction])[0]
         else:
-            status = "Kering"
+            original_label = str(prediction)
+
+        # Ambil status akhir (Segar/Sedang/Kering saja)
+        if 'segar' in original_label:
+            status = 'Segar'
+        elif 'sedang' in original_label:
+            status = 'Sedang'
+        elif 'kering' in original_label:
+            status = 'Kering'
+        else:
+            status = 'Tidak Diketahui'
+
+        kadar_air = kadar_air_mapping.get(status, 0.0)
 
         return jsonify({
-            'kadar_air': round(float(predicted_kadar_air), 2),
-            'status': status
+            'klasifikasi': status,
+            'kadar_air': kadar_air
         })
 
     except Exception as e:
