@@ -1,18 +1,27 @@
 from flask import Flask, request, jsonify
-import os
 import numpy as np
 import joblib
 from PIL import Image
 
-# Load model regresi dan scaler
-model = joblib.load('model_regresi_rgb.pkl')
-scaler = joblib.load('scaler_regresi_rgb.pkl')
+# Load model dan scaler
+model = joblib.load('model_rf.pkl')  # model klasifikasi
+scaler = joblib.load('scaler.pkl')   # StandardScaler yang dipakai saat training
 
 app = Flask(__name__)
 
-# Fungsi ekstraksi fitur mean R, G, B dari gambar
+# Mapping label hasil model ke status umum
+label_mapping = {
+    'hijau_segar': 'Segar',
+    'merah_segar': 'Segar',
+    'hijau_sedang': 'Sedang',
+    'merah_sedang': 'Sedang',
+    'hijau_kering': 'Kering',
+    'merah_kering': 'Kering'
+}
+
+# Fungsi ekstraksi fitur dari gambar
 def extract_rgb_features(image):
-    image = image.resize((100, 100))  # Ukuran seragam
+    image = image.resize((100, 100))
     image_np = np.array(image)
 
     if image_np.ndim == 3 and image_np.shape[2] == 3:
@@ -21,51 +30,36 @@ def extract_rgb_features(image):
         b_mean = np.mean(image_np[:, :, 2])
         return [r_mean, g_mean, b_mean]
     else:
-        raise ValueError("Gambar harus RGB (3 channel)")
+        raise ValueError("Gambar harus memiliki 3 channel RGB")
 
-@app.route('/predict_kadar_air', methods=['POST'])
-def predict_kadar_air():
+@app.route('/predict_image', methods=['POST'])
+def predict_image():
     try:
         image_file = request.files['image']
-        image = Image.open(image_file).convert('RGB')  # Konversi ke RGB
+        kadar_air_str = request.form.get('kadar_air', None)
 
-        # Simpan gambar untuk debugging
-        image.save("last_uploaded.jpg")
-        print("Gambar disimpan sebagai 'last_uploaded.jpg'")
+        if kadar_air_str is None:
+            return jsonify({'error': 'Parameter kadar_air tidak ditemukan'}), 400
 
+        kadar_air = float(kadar_air_str) / 100.0  # ubah ke skala 0–1
+        image = Image.open(image_file).convert('RGB')
         rgb_features = extract_rgb_features(image)
-        print("RGB Features (mean):", rgb_features)
 
-        # Validasi: deteksi jika gambar terlalu terang atau gelap
-        if any([x < 5 or x > 250 for x in rgb_features]):
-            print("Gambar tidak valid: terlalu terang atau gelap")
-            return jsonify({
-                'kadar_air': None,
-                'klasifikasi': 'Gambar tidak valid atau bukan cabai'
-            })
+        # Gabungkan RGB dan kadar air
+        features = np.array(rgb_features + [kadar_air]).reshape(1, -1)
+        features_scaled = scaler.transform(features)
 
-        # Prediksi
-        features_scaled = scaler.transform([rgb_features])
-        print("Scaled Features:", features_scaled)
-
-        predicted_kadar_air = model.predict(features_scaled)[0]
-        print("Predicted Kadar Air:", predicted_kadar_air)
-
-        # Klasifikasi berdasarkan kadar air
-        if predicted_kadar_air >= 80:
-            kondisi = "Segar"
-        elif predicted_kadar_air >= 60:
-            kondisi = "Sedang"
-        else:
-            kondisi = "Kering"
+        # Prediksi kelas
+        prediction = model.predict(features_scaled)
+        original_label = str(prediction[0])
+        mapped_label = label_mapping.get(original_label, "Tidak Diketahui")
 
         return jsonify({
-            'kadar_air': round(float(predicted_kadar_air), 2),
-            'klasifikasi': kondisi
+            'klasifikasi': mapped_label,
+            'label_model': original_label
         })
 
     except Exception as e:
-        print("Error:", str(e))
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
