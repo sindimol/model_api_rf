@@ -29,11 +29,29 @@ def predict_kadar_air():
         image_file = request.files['image']
         image = Image.open(image_file).convert('RGB')  # Konversi ke RGB
 
-        rgb_features = extract_rgb_features(image)
-        features_scaled = scaler.transform([rgb_features])
-        predicted_kadar_air = model.predict(features_scaled)[0]
+        # Simpan gambar untuk debugging
+        image.save("last_uploaded.jpg")
+        print("Gambar disimpan sebagai 'last_uploaded.jpg'")
 
-        # Klasifikasi berdasarkan kadar air (misal: kamu bisa sesuaikan ambang batasnya)
+        rgb_features = extract_rgb_features(image)
+        print("RGB Features (mean):", rgb_features)
+
+        # Validasi: deteksi jika gambar terlalu terang atau gelap
+        if any([x < 5 or x > 250 for x in rgb_features]):
+            print("Gambar tidak valid: terlalu terang atau gelap")
+            return jsonify({
+                'kadar_air': None,
+                'klasifikasi': 'Gambar tidak valid atau bukan cabai'
+            })
+
+        # Prediksi
+        features_scaled = scaler.transform([rgb_features])
+        print("Scaled Features:", features_scaled)
+
+        predicted_kadar_air = model.predict(features_scaled)[0]
+        print("Predicted Kadar Air:", predicted_kadar_air)
+
+        # Klasifikasi berdasarkan kadar air
         if predicted_kadar_air >= 80:
             kondisi = "Segar"
         elif predicted_kadar_air >= 60:
@@ -45,7 +63,9 @@ def predict_kadar_air():
             'kadar_air': round(float(predicted_kadar_air), 2),
             'klasifikasi': kondisi
         })
+
     except Exception as e:
+        print("Error:", str(e))
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
