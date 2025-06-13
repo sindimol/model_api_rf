@@ -53,8 +53,8 @@ def predict_kadar_air():
         status = get_status(kadar_air)
 
         return jsonify({
-        "kadar_air": float(predicted_kadar_air),
-        "status": status
+            "kadar_air": kadar_air,
+            "status": status
     })
 
 
