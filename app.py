@@ -3,7 +3,7 @@ from PIL import Image
 import numpy as np
 import joblib
 import os
-##from tensorflow.keras.models import load_model
+from tensorflow.keras.models import load_model
 
 # Inisialisasi Flask app
 app = Flask(__name__)
