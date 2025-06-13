@@ -11,7 +11,7 @@ app = Flask(__name__)
 # Load model, scaler, dan label encoder
 model = load_model('model_ann.h5')
 scaler = joblib.load('scaler_ann.pkl')
-label_encoder = joblib.load('label_encoder.pkl')
+label_encoder = joblib.load('label_encoder_ann.pkl')
 
 # Fungsi ekstraksi fitur RGB
 def extract_features(image):
