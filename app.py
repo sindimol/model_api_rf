@@ -12,10 +12,12 @@ app = Flask(__name__)
 
 # Fungsi ekstraksi fitur RGB
 def extract_rgb_features(image):
-    image = image.resize((150, 150))
+    # Resize sesuai dengan ukuran saat training
+    image = image.resize((224, 224))  # Ganti ke 224x224 jika saat training pakai ukuran ini
     image_np = np.array(image)
 
     if image_np.ndim == 3 and image_np.shape[2] == 3:
+        # Pastikan urutan channel sesuai saat training
         r_mean = np.mean(image_np[:, :, 0])
         g_mean = np.mean(image_np[:, :, 1])
         b_mean = np.mean(image_np[:, :, 2])
@@ -23,13 +25,22 @@ def extract_rgb_features(image):
     else:
         raise ValueError("Gambar harus berupa RGB (3 channel)")
 
+# Konversi kadar air ke status (kalibrasi berdasarkan data kamu)
+def get_status(kadar_air):
+    if kadar_air >= 70:
+        return 'Segar'
+    elif kadar_air >= 50:
+        return 'Sedang'
+    else:
+        return 'Kering'
+
 @app.route('/predict_kadar_air', methods=['POST'])
 def predict_kadar_air():
     try:
         image_file = request.files['image']
         image = Image.open(image_file).convert('RGB')
 
-        # Ekstrak RGB
+        # Ekstrak fitur RGB
         rgb_features = extract_rgb_features(image)
         features = np.array(rgb_features).reshape(1, -1)
         features_scaled = scaler.transform(features)
@@ -39,17 +50,13 @@ def predict_kadar_air():
         kadar_air = round(float(kadar_air), 2)
 
         # Konversi ke status
-        if kadar_air >= 70:
-            status = 'Segar'
-        elif kadar_air >= 50:
-            status = 'Sedang'
-        else:
-            status = 'Kering'
+        status = get_status(kadar_air)
 
         return jsonify({
-            'kadar_air': kadar_air,
-            'status': status
-        })
+        "kadar_air": float(predicted_kadar_air),
+        "status": status
+    })
+
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
