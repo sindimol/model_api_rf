@@ -1,65 +1,55 @@
 from flask import Flask, request, jsonify
+from PIL import Image
 import numpy as np
 import joblib
-from PIL import Image
 import os
+from tensorflow.keras.models import load_model
 
-# Load model dan scaler regresi
-model = joblib.load('model_regresi_random.pkl')       # Model regresi kadar air
-scaler = joblib.load('scaler_regresi_rf.pkl')         # StandardScaler untuk RGB
-
+# Inisialisasi Flask app
 app = Flask(__name__)
 
+# Load model, scaler, dan label encoder
+model = load_model('model_ann.h5')
+scaler = joblib.load('scaler_ann.pkl')
+label_encoder = joblib.load('label_encoder.pkl')
+
 # Fungsi ekstraksi fitur RGB
-def extract_rgb_features(image):
-    # Resize sesuai dengan ukuran saat training
-    image = image.resize((224, 224))  # Ganti ke 224x224 jika saat training pakai ukuran ini
+def extract_features(image):
+    image = image.resize((150, 150))
     image_np = np.array(image)
 
     if image_np.ndim == 3 and image_np.shape[2] == 3:
-        # Pastikan urutan channel sesuai saat training
         r_mean = np.mean(image_np[:, :, 0])
         g_mean = np.mean(image_np[:, :, 1])
         b_mean = np.mean(image_np[:, :, 2])
         return [r_mean, g_mean, b_mean]
     else:
-        raise ValueError("Gambar harus berupa RGB (3 channel)")
+        raise ValueError("Gambar tidak valid atau tidak RGB.")
 
-# Konversi kadar air ke status (kalibrasi berdasarkan data kamu)
-def get_status(kadar_air):
-    if kadar_air >= 70:
-        return 'Segar'
-    elif kadar_air >= 50:
-        return 'Sedang'
-    else:
-        return 'Kering'
-
-@app.route('/predict_kadar_air', methods=['POST'])
-def predict_kadar_air():
+@app.route('/predict_kualitas_cabai', methods=['POST'])
+def predict_kualitas():
     try:
         image_file = request.files['image']
+        kadar_air = float(request.form['kadar_air'])  # Dikirim dari Flutter juga
+
         image = Image.open(image_file).convert('RGB')
+        rgb_features = extract_features(image)
 
-        # Ekstrak fitur RGB
-        rgb_features = extract_rgb_features(image)
-        features = np.array(rgb_features).reshape(1, -1)
-        features_scaled = scaler.transform(features)
+        fitur_input = np.array(rgb_features + [kadar_air]).reshape(1, -1)
+        fitur_scaled = scaler.transform(fitur_input)
 
-        # Prediksi kadar air
-        kadar_air = model.predict(features_scaled)[0]
-        kadar_air = round(float(kadar_air), 2)
-
-        # Konversi ke status
-        status = get_status(kadar_air)
+        pred_prob = model.predict(fitur_scaled)[0]
+        pred_class_index = np.argmax(pred_prob)
+        pred_label = label_encoder.inverse_transform([pred_class_index])[0]
 
         return jsonify({
-            "kadar_air": kadar_air,
-            "status": status
-    })
-
+            'prediksi': pred_label,
+            'confidence': round(float(np.max(pred_prob)) * 100, 2)
+        })
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# Run server
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
